@@ -11,6 +11,7 @@ import 'services/api_service.dart';
 import 'services/api_program_service.dart';
 import 'services/auth_service.dart';
 import 'services/mock_api.dart';
+import 'services/mock_recruitment_store.dart';
 import 'services/mock_program_service.dart';
 import 'services/program_repository.dart';
 import 'services/storage_service.dart';
@@ -35,7 +36,9 @@ Future<void> main() async {
         ? ExcelerateApp(
             preferences: preferences,
             apiBaseUrl: MockApi.baseUrl,
-            apiClient: MockApi().client,
+            apiClient: MockApi(
+              recruitmentStore: MockRecruitmentStore(preferences),
+            ).client,
           )
         : ExcelerateApp(
             preferences: preferences,

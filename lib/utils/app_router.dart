@@ -16,6 +16,7 @@ import '../views/learner/badges.dart';
 import '../views/learner/cv_upload.dart';
 import '../views/learner/dashboard.dart';
 import '../views/learner/programs_list.dart';
+import '../views/learner/opportunities.dart';
 import '../views/shared/program_details_loader.dart';
 import '../widgets/page_layout.dart';
 import 'constants.dart';
@@ -73,6 +74,9 @@ abstract final class AppRouter {
       case AppRoutes.applications:
         screen =
             const AuthGuard(role: UserRole.learner, child: ApplicationsView());
+      case AppRoutes.opportunities:
+        screen =
+            const AuthGuard(role: UserRole.learner, child: OpportunitiesView());
       case AppRoutes.postOpportunity:
         screen =
             const AuthGuard(role: UserRole.admin, child: PostOpportunityView());

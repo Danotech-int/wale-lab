@@ -6,6 +6,7 @@ class JobOpportunity {
     required this.description,
     required this.location,
     required this.deadline,
+    this.hasApplied = false,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class JobOpportunity {
   final String description;
   final String location;
   final DateTime deadline;
+  final bool hasApplied;
 
   factory JobOpportunity.fromJson(Map<String, dynamic> json) => JobOpportunity(
         id: json['id'].toString(),
@@ -22,6 +24,7 @@ class JobOpportunity {
         description: json['description'] as String,
         location: json['location'] as String,
         deadline: DateTime.parse(json['deadline'] as String),
+        hasApplied: json['has_applied'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -31,5 +34,6 @@ class JobOpportunity {
         'description': description,
         'location': location,
         'deadline': deadline.toUtc().toIso8601String(),
+        'has_applied': hasApplied,
       };
 }

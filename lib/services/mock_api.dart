@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import '../models/user.dart';
 import 'mock_data.dart';
+import 'mock_recruitment_store.dart';
 
 class _Account {
   _Account({
@@ -32,12 +34,17 @@ class _Account {
       ).toJson();
 }
 
-/// In-memory stand-in for the backend, used only when USE_MOCK is set.
+/// Demo backend. An optional store persists recruitment records locally;
+/// authentication and programme registrations remain in memory.
 class MockApi {
   MockApi({
     this.latency = const Duration(milliseconds: 250),
     Future<List<Map<String, dynamic>>> Function()? programLoader,
-  }) : _programLoader = programLoader ?? _defaultLoader;
+    DateTime Function()? now,
+    MockRecruitmentStore? recruitmentStore,
+  })  : _programLoader = programLoader ?? _defaultLoader,
+        _now = now ?? DateTime.now,
+        _recruitmentStore = recruitmentStore;
 
   static const baseUrl = 'https://mock.excelerate.local/api';
   static const invitationCode = 'EXCEL2026';
@@ -52,6 +59,9 @@ class MockApi {
       _cachedPrograms ?? await loadMockPrograms();
 
   final Duration latency;
+  final DateTime Function() _now;
+  final MockRecruitmentStore? _recruitmentStore;
+  Future<void>? _pending;
   final Future<List<Map<String, dynamic>>> Function() _programLoader;
   List<Map<String, dynamic>>? _programs;
   Set<String> _defaultRegistered = {};
@@ -80,11 +90,63 @@ class MockApi {
   };
   final Map<String, _Account> _tokens = {};
   final Map<String, Set<String>> _registrations = {};
+  final Map<String, Map<String, dynamic>> _opportunities = {};
+  final Map<String, Map<String, dynamic>> _applications = {};
   var _nextId = 1;
 
   http.Client get client => MockClient(_handle);
 
-  Future<http.Response> _handle(http.Request request) async {
+  Future<http.Response> _handle(http.Request request) {
+    if (_recruitmentStore == null) return _handleRequest(request);
+    // Keep reads and writes ordered inside this mock instance.
+    final response =
+        _pending?.then((_) => _handleStored(request)) ?? _handleStored(request);
+    _pending = response.then<void>((_) {},
+        onError: (Object error, StackTrace stack) {});
+    return response;
+  }
+
+  Future<http.Response> _handleStored(http.Request request) async {
+    final store = _recruitmentStore;
+    if (store == null) return _handleRequest(request);
+    await store.reload();
+    _opportunities.addAll(store.read('opportunities'));
+    _applications.addAll(store.read('applications'));
+    final oldApplications = {
+      for (final item in _applications.entries)
+        item.key: Map<String, dynamic>.of(item.value),
+    };
+    final oldOpportunities =
+        Map<String, Map<String, dynamic>>.of(_opportunities);
+    final response = await _handleRequest(request);
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        !{'POST', 'PUT'}.contains(request.method)) {
+      return response;
+    }
+    final path = request.url.path.replaceFirst(RegExp(r'^/api'), '');
+    final collection = path == '/opportunities'
+        ? 'opportunities'
+        : path.endsWith('/apply') || path.startsWith('/applications/')
+            ? 'applications'
+            : null;
+    if (collection == null) return response;
+    try {
+      await store.save(
+          collection, jsonDecode(response.body) as Map<String, dynamic>);
+      return response;
+    } catch (_) {
+      _applications
+        ..clear()
+        ..addAll(oldApplications);
+      _opportunities
+        ..clear()
+        ..addAll(oldOpportunities);
+      return _error(503, 'Unable to save your changes. Please try again.');
+    }
+  }
+
+  Future<http.Response> _handleRequest(http.Request request) async {
     if (latency > Duration.zero) await Future<void>.delayed(latency);
     final path = request.url.path.replaceFirst(RegExp(r'^/api'), '');
     final route = '${request.method} $path';
@@ -119,16 +181,52 @@ class MockApi {
         ]);
       case 'GET /assessments/me':
       case 'GET /badges/me':
-      case 'GET /applications/me':
         return _json([]);
+      case 'GET /opportunities':
+        return _json([
+          for (final opportunity in _opportunities.values.toList().reversed)
+            {
+              ...opportunity,
+              'has_applied': _applications.values.any((application) =>
+                  application['opportunity_id'] == opportunity['id'] &&
+                  application['learner_id'] == account.id),
+            },
+        ]);
+      case 'GET /applications/me':
+        if (admin) return _error(403, 'Learners only.');
+        return _json(_applications.values
+            .where((application) => application['learner_id'] == account.id)
+            .toList()
+            .reversed
+            .toList());
       case 'GET /applications':
-        return admin ? _json([]) : _error(403, 'Admins only.');
+        if (!admin) return _error(403, 'Admins only.');
+        final status = request.url.queryParameters['status'];
+        return _json(_applications.values
+            .where((application) =>
+                status == null || application['status'] == status)
+            .toList()
+            .reversed
+            .toList());
       case 'POST /opportunities':
+        return admin
+            ? _publishOpportunity(account, _body(request))
+            : _error(403, 'Admins only.');
       case 'POST /interviews':
         return admin ? _json({}, 201) : _error(403, 'Admins only.');
     }
 
     final segments = path.split('/').where((part) => part.isNotEmpty).toList();
+    if (segments.length == 3 &&
+        segments.first == 'opportunities' &&
+        segments[2] == 'apply' &&
+        request.method == 'POST') {
+      if (admin) return _error(403, 'Only learners can apply.');
+      if (!account.profileCompleted) {
+        return _error(403, 'Complete your profile before applying.');
+      }
+      return _apply(account, segments[1]);
+    }
     if (segments.length >= 2 && segments.first == 'programs') {
       final program = (await _programsFor(account))
           .where((p) => p['id']?.toString() == segments[1])
@@ -161,10 +259,73 @@ class MockApi {
         });
       }
     }
-    if (request.method == 'PUT' && segments.firstOrNull == 'applications') {
-      return admin ? _json({}) : _error(403, 'Admins only.');
+    if (request.method == 'PUT' &&
+        segments.length == 2 &&
+        segments.first == 'applications') {
+      if (!admin) return _error(403, 'Admins only.');
+      final application = _applications[segments[1]];
+      if (application == null) return _error(404, 'Application not found.');
+      final status = _body(request)['status'];
+      if (!{'submitted', 'reviewing', 'shortlisted', 'rejected'}
+          .contains(status)) {
+        return _error(400, 'Choose a valid application status.');
+      }
+      application['status'] = status;
+      return _json(application);
     }
     return _error(404, 'Not found.');
+  }
+
+  http.Response _publishOpportunity(_Account admin, Map<String, dynamic> body) {
+    const fields = ['title', 'company', 'description', 'location'];
+    if (fields.any((key) =>
+        body[key] is! String || (body[key] as String).trim().isEmpty)) {
+      return _error(400, 'Enter a title, company, description and location.');
+    }
+    final deadline = body['deadline'] is String
+        ? DateTime.tryParse(body['deadline'] as String)
+        : null;
+    if (deadline == null || !deadline.isAfter(_now())) {
+      return _error(400, 'Choose an application deadline in the future.');
+    }
+    final id = _uniqueId('opportunity');
+    final opportunity = {
+      'id': id,
+      for (final key in fields) key: (body[key] as String).trim(),
+      'deadline': deadline.toUtc().toIso8601String(),
+      'published_by': admin.id,
+      'created_at': _now().toUtc().toIso8601String(),
+    };
+    _opportunities[id] = opportunity;
+    return _json(opportunity, 201);
+  }
+
+  http.Response _apply(_Account learner, String opportunityId) {
+    final opportunity = _opportunities[opportunityId];
+    if (opportunity == null) return _error(404, 'Opportunity not found.');
+    if (!DateTime.parse(opportunity['deadline'] as String).isAfter(_now())) {
+      return _error(410, 'Applications for this opportunity have closed.');
+    }
+    if (_applications.values.any((application) =>
+        application['opportunity_id'] == opportunityId &&
+        application['learner_id'] == learner.id)) {
+      return _error(409, 'You have already applied for this opportunity.');
+    }
+    // One persistent record per learner and role, even when two tabs submit.
+    final id = 'application-$opportunityId-${learner.id}';
+    final application = {
+      'id': id,
+      'opportunity_id': opportunityId,
+      'opportunity_title': opportunity['title'],
+      'company': opportunity['company'],
+      'learner_id': learner.id,
+      'candidate_name': learner.name,
+      'candidate_email': learner.email,
+      'status': 'submitted',
+      'created_at': _now().toUtc().toIso8601String(),
+    };
+    _applications[id] = application;
+    return _json(application, 201);
   }
 
   http.Response _login(Map<String, dynamic> body) {
@@ -185,7 +346,7 @@ class MockApi {
       return _error(409, 'An account with this email already exists.');
     }
     final account = _Account(
-      id: 'u-new-${_nextId++}',
+      id: _uniqueId('u-new'),
       name: (body['name'] as String? ?? '').trim(),
       email: email,
       password: body['password'] as String? ?? '',
@@ -199,6 +360,16 @@ class MockApi {
     final token = 'mock-token-${_nextId++}-${account.id}';
     _tokens[token] = account;
     return _json({'token': token, 'user': account.toJson()});
+  }
+
+  String _uniqueId(String prefix) {
+    final random = Random.secure();
+    final suffix = List.generate(
+            4,
+            (_) =>
+                random.nextInt(0x100000000).toRadixString(16).padLeft(8, '0'))
+        .join();
+    return '$prefix-$suffix';
   }
 
   _Account? _authenticate(http.Request request) {

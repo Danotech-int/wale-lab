@@ -13,8 +13,43 @@ class ApplicationReviewView extends StatelessWidget {
   Widget build(BuildContext context) => ApiCollectionView(
         title: 'Review applications',
         path: '/applications',
+        refreshInterval: const Duration(seconds: 15),
         emptyMessage: 'There are no applications to review yet.',
-        itemBuilder: (item) => ApplicationReviewCard(application: item),
+        itemBuilder: (item) =>
+            ApplicationReviewCard(key: ValueKey(item['id']), application: item),
+        collectionBuilder: (items) {
+          final groups = <String, List<Map<String, dynamic>>>{};
+          for (final item in items) {
+            final id = (item['opportunity_id'] ?? item['opportunity_title'])
+                .toString();
+            groups.putIfAbsent(id, () => []).add(item);
+          }
+          final applicants = items
+              .map((item) =>
+                  item['learner_id'] ??
+                  item['candidate_email'] ??
+                  item['candidate_name'])
+              .toSet();
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                    '${items.length} applications from ${applicants.length} '
+                    '${applicants.length == 1 ? 'applicant' : 'applicants'}',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 16),
+                for (final applications in groups.values) ...[
+                  Text(
+                      '${applications.first['opportunity_title']} (${applications.length})',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  for (final item in applications)
+                    ApplicationReviewCard(
+                        key: ValueKey(item['id']), application: item),
+                  const SizedBox(height: 16),
+                ],
+              ]);
+        },
       );
 }
 
@@ -34,6 +69,14 @@ class _ApplicationReviewCardState extends State<ApplicationReviewCard> {
   void initState() {
     super.initState();
     _status = widget.application['status'] as String;
+  }
+
+  @override
+  void didUpdateWidget(covariant ApplicationReviewCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.application['status'] != widget.application['status']) {
+      _status = widget.application['status'] as String;
+    }
   }
 
   Future<void> _shortlist() async {
@@ -119,6 +162,10 @@ class _ApplicationReviewCardState extends State<ApplicationReviewCard> {
               ],
             ),
             const SizedBox(height: 12),
+            if (widget.application['candidate_email'] is String) ...[
+              Text(widget.application['candidate_email'] as String),
+              const SizedBox(height: 8),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(

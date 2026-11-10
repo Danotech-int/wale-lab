@@ -53,7 +53,10 @@ abstract interface class ProgramService {
 reuses `ApiProgramService` against the **same MockApi-backed ApiService** used by
 the app, so authentication, latency, fixtures and per-learner state remain shared.
 It does not create another mock store. Each MockApi instance represents a separate
-backend; keep one instance per app session. In-memory data resets on app restart.
+backend for authentication and programme registrations; keep one instance per app
+session for these. That in-memory data resets on app restart. Recruitment records
+(job opportunities/applications) are separately persisted locally by
+`MockRecruitmentStore`; see `docs/OPPORTUNITIES_DEMO.md`.
 
 `ExcelerateApp(programService: yourImplementation, ...)` injects a replacement.
 The default uses `MockProgramService` with the mock API base URL, otherwise

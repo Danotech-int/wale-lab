@@ -21,6 +21,7 @@ abstract final class AppRoutes {
   static const assessments = '/learner/assessments';
   static const badges = '/learner/badges';
   static const applications = '/learner/applications';
+  static const opportunities = '/learner/opportunities';
   static const postOpportunity = '/admin/opportunities/new';
   static const applicationReview = '/admin/applications';
   static const candidateShortlisting = '/admin/shortlist';

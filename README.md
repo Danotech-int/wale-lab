@@ -156,7 +156,17 @@ Use the following development credentials:
 
 **Mock sign-up invitation code:** `EXCEL2026`
 
-**Note:** These are development-only mock credentials, not production accounts. Mock data is maintained in memory, so sessions and registrations reset when the application restarts or the browser page is refreshed.
+**Recruitment demo:** Admins can publish opportunities, learners can open
+**Job opportunities** and apply, and admins can review and shortlist those
+applications. Multiple opportunities and all applicants are retained in local
+browser/device storage. Admin review groups applications by role and refreshes
+every 15 seconds. See [the demo walkthrough and API contract](docs/OPPORTUNITIES_DEMO.md)
+for the fixed browser URL used to retain records across launches.
+
+**Note:** These are development-only mock credentials, not production accounts.
+Opportunity/application records persist locally. Mock sessions, new signup
+accounts and programme registrations remain in memory and reset on refresh;
+sign in again with a demo account. Local recruitment data is not shared across devices.
 
 ## 8. Application Architecture
 

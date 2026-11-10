@@ -55,6 +55,12 @@ class DashboardView extends StatelessWidget {
         actionsTitle: 'Your next steps',
         actions: const [
           DashboardAction(
+            title: 'Job opportunities',
+            description: 'Explore published roles and apply to join a team.',
+            route: AppRoutes.opportunities,
+            icon: Icons.business_center_outlined,
+          ),
+          DashboardAction(
             title: 'Development programs',
             description:
                 'Discover courses, workshops and career opportunities.',
