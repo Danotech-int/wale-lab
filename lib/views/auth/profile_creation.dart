@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import '../../models/profile.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/auth_errors.dart';
 import '../../utils/themes.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/page_layout.dart';
+import '../../widgets/email_verification_notice.dart';
 
 class ProfileCreationView extends StatefulWidget {
   const ProfileCreationView({super.key});
@@ -53,10 +55,9 @@ class _ProfileCreationViewState extends State<ProfileCreationView> {
         Navigator.pushNamedAndRemoveUntil(
             context, AppRoutes.home, (_) => false);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        setState(
-            () => _error = 'Unable to save your profile. Please try again.');
+        setState(() => _error = authErrorMessage(error));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -85,6 +86,7 @@ class _ProfileCreationViewState extends State<ProfileCreationView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const EmailVerificationNotice(),
                 Row(
                   children: [
                     Container(
@@ -110,6 +112,7 @@ class _ProfileCreationViewState extends State<ProfileCreationView> {
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: _headline,
+                  maxLength: 200,
                   decoration: const InputDecoration(
                     labelText: 'Professional headline',
                     hintText: 'e.g. Aspiring Software Engineer',
@@ -120,6 +123,7 @@ class _ProfileCreationViewState extends State<ProfileCreationView> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _bio,
+                  maxLength: 5000,
                   minLines: 3,
                   maxLines: 5,
                   decoration: const InputDecoration(
@@ -139,10 +143,16 @@ class _ProfileCreationViewState extends State<ProfileCreationView> {
                     helperText: 'Separate skills with commas',
                     hintText: 'e.g. Flutter, Dart, Problem Solving',
                   ),
-                  validator: (v) =>
-                      v == null || v.split(',').every((s) => s.trim().isEmpty)
-                          ? 'Enter at least one skill'
-                          : null,
+                  validator: (v) {
+                    final skills = (v ?? '')
+                        .split(',')
+                        .map((s) => s.trim())
+                        .where((s) => s.isNotEmpty)
+                        .toSet();
+                    if (skills.isEmpty) return 'Enter at least one skill';
+                    if (skills.length > 50) return 'Enter up to 50 skills';
+                    return null;
+                  },
                 ),
                 if (_error != null)
                   Padding(

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/auth_errors.dart';
 import '../../utils/validators.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/auth_switch_link.dart';
@@ -53,10 +54,9 @@ class _LoginViewState extends State<LoginView> {
           (_) => false,
         );
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        setState(() => _error =
-            'Unable to sign in. Check your credentials and connection.');
+        setState(() => _error = authErrorMessage(error));
       }
     } finally {
       if (mounted) {
@@ -65,8 +65,32 @@ class _LoginViewState extends State<LoginView> {
     }
   }
 
-  // Placeholder until password reset exists on the backend.
-  void _forgotPassword() {
+  Future<void> _forgotPassword() async {
+    final auth = context.read<AuthService>();
+    if (auth.supportsEmailActions) {
+      if (Validators.email(_emailController.text) != null) {
+        setState(() =>
+            _error = 'Enter your email address above to reset your password.');
+        return;
+      }
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      try {
+        await auth.resetPassword(_emailController.text);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'If an account exists for this email, a password reset link has been sent. Check your inbox and spam folder.'),
+        ));
+      } catch (error) {
+        if (mounted) setState(() => _error = authErrorMessage(error));
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+      return;
+    }
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
@@ -139,11 +163,13 @@ class _LoginViewState extends State<LoginView> {
                     ),
                   ),
                 ),
-                if (_error != null)
+                if (_error != null ||
+                    context.watch<AuthService>().initializationError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      _error!,
+                      _error ??
+                          context.watch<AuthService>().initializationError!,
                       style:
                           TextStyle(color: Theme.of(context).colorScheme.error),
                     ),

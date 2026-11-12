@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -10,6 +12,8 @@ import 'firebase_options.dart';
 import 'services/api_service.dart';
 import 'services/api_program_service.dart';
 import 'services/auth_service.dart';
+import 'services/auth_backend.dart';
+import 'services/firebase_auth_backend.dart';
 import 'services/mock_api.dart';
 import 'services/mock_recruitment_store.dart';
 import 'services/mock_program_service.dart';
@@ -42,6 +46,12 @@ Future<void> main() async {
           )
         : ExcelerateApp(
             preferences: preferences,
+            authBackend: FirebaseAuthBackend(
+              auth: FirebaseAuth.instance,
+              firestore: FirebaseFirestore.instance,
+            ),
+            tokenProvider: () async =>
+                FirebaseAuth.instance.currentUser?.getIdToken(),
           ),
   );
 }
@@ -53,12 +63,16 @@ class ExcelerateApp extends StatelessWidget {
     this.apiBaseUrl = AppConstants.apiBaseUrl,
     this.apiClient,
     this.programService,
+    this.authBackend,
+    this.tokenProvider,
   });
 
   final SharedPreferences preferences;
   final String apiBaseUrl;
   final http.Client? apiClient;
   final ProgramService? programService;
+  final AuthBackend? authBackend;
+  final Future<String?> Function()? tokenProvider;
 
   @override
   Widget build(BuildContext context) => MultiProvider(
@@ -70,6 +84,7 @@ class ExcelerateApp extends StatelessWidget {
             create: (_) => ApiService(
               baseUrl: apiBaseUrl,
               client: apiClient,
+              tokenProvider: tokenProvider,
             ),
             dispose: (_, api) => api.dispose(),
           ),
@@ -93,6 +108,7 @@ class ExcelerateApp extends StatelessWidget {
               final auth = AuthService(
                 context.read<ApiService>(),
                 context.read<StorageService>(),
+                backend: authBackend,
               );
               unawaited(auth.restoreSession());
               return auth;

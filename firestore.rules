@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owns(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function validAccount(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 120
+        && data.email == request.auth.token.email
+        && data.profile_completed is bool
+        && data.created_at is timestamp
+        && data.updated_at == request.time;
+    }
+
+    function validProfile(data) {
+      return data.headline is string && data.headline.size() > 0 && data.headline.size() <= 200
+        && data.bio is string && data.bio.size() > 0 && data.bio.size() <= 5000
+        && data.skills is list && data.skills.size() > 0 && data.skills.size() <= 50;
+    }
+
+    match /users/{uid} {
+      allow get: if owns(uid);
+      allow create: if owns(uid)
+        && request.resource.data.keys().hasOnly([
+          'name', 'email', 'role', 'profile_completed', 'created_at', 'updated_at'
+        ])
+        && validAccount(request.resource.data)
+        && request.resource.data.role == 'learner'
+        && request.resource.data.profile_completed == false
+        && request.resource.data.created_at == request.time;
+      allow update: if owns(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'headline', 'bio', 'skills', 'profile_completed', 'updated_at'
+        ])
+        && validAccount(request.resource.data)
+        && request.resource.data.profile_completed == true
+        && validProfile(request.resource.data);
+      // Listing accounts, changing roles and deleting profiles require a
+      // trusted administrator backend; client access is denied by default.
+    }
+  }
+}

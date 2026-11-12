@@ -231,7 +231,15 @@ The intended Firebase integration includes:
 - Firebase-compatible document identifiers.
 - A service-based architecture for future Firestore implementation.
 
-**Current integration status:** The Firebase service is a planned integration boundary. The mock implementation remains available for local development. Do not assume that live Firestore operations or production authentication are fully implemented.
+**Current integration status:** Live Firebase email/password signup, login,
+session restoration, email verification, password reset, and Firestore learner
+profiles are implemented. Signup names are saved in Firebase Auth and Firestore
+and displayed on the dashboard. Run with `--dart-define=USE_MOCK=false` for real
+accounts. See [Firebase authentication setup](docs/FIREBASE_AUTH_SETUP.md).
+
+Programme and recruitment data still use the HTTP/mock service layer; the
+`FirebaseProgramService` remains a placeholder. The local mock demo is still
+available with `--dart-define=USE_MOCK=true`.
 
 ### Proposed Firestore Collections
 

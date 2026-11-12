@@ -8,6 +8,7 @@ import '../../utils/constants.dart';
 import '../../widgets/dashboard_announcements.dart';
 import '../../widgets/dashboard_layout.dart';
 import '../../widgets/dashboard_overview.dart';
+import '../../widgets/email_verification_notice.dart';
 
 class DashboardView extends StatelessWidget {
   const DashboardView({super.key});
@@ -25,7 +26,10 @@ class DashboardView extends StatelessWidget {
         name: context.watch<AuthService>().user!.name,
         introduction:
             'Build your skills and take the next step in your career.',
-        announcements: const DashboardAnnouncements(role: UserRole.learner),
+        announcements: const Column(children: [
+          EmailVerificationNotice(),
+          DashboardAnnouncements(role: UserRole.learner),
+        ]),
         primaryAction: const DashboardAction(
           title: 'Explore programs',
           description: 'Find your next learning opportunity.',

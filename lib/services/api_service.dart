@@ -15,11 +15,12 @@ class ApiException implements Exception {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, http.Client? client})
+  ApiService({required this.baseUrl, http.Client? client, this.tokenProvider})
       : _client = client ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
+  final Future<String?> Function()? tokenProvider;
   String? sessionToken;
 
   Uri _uri(String path) {
@@ -35,27 +36,30 @@ class ApiService {
         '${path.replaceFirst(RegExp(r'^/+'), '')}');
   }
 
-  Map<String, String> get _headers => {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        if (sessionToken != null) 'Authorization': 'Bearer $sessionToken',
-      };
+  Future<Map<String, String>> get _headers async {
+    final token = tokenProvider == null ? sessionToken : await tokenProvider!();
+    return {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   Future<dynamic> get(String path) async => _decode(
         await _client
-            .get(_uri(path), headers: _headers)
+            .get(_uri(path), headers: await _headers)
             .timeout(AppConstants.requestTimeout),
       );
 
   Future<dynamic> post(String path, Map<String, dynamic> body) async => _decode(
         await _client
-            .post(_uri(path), headers: _headers, body: jsonEncode(body))
+            .post(_uri(path), headers: await _headers, body: jsonEncode(body))
             .timeout(AppConstants.requestTimeout),
       );
 
   Future<dynamic> put(String path, Map<String, dynamic> body) async => _decode(
         await _client
-            .put(_uri(path), headers: _headers, body: jsonEncode(body))
+            .put(_uri(path), headers: await _headers, body: jsonEncode(body))
             .timeout(AppConstants.requestTimeout),
       );
 
@@ -68,8 +72,8 @@ class ApiService {
     }
     final request = http.MultipartRequest('POST', _uri('/profiles/me/cv'))
       ..headers.addAll({
-        'Accept': 'application/json',
-        if (sessionToken != null) 'Authorization': 'Bearer $sessionToken',
+        ...await _headers
+          ..remove('Content-Type'),
       })
       ..files
           .add(http.MultipartFile.fromBytes('cv', bytes, filename: filename));
